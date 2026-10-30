@@ -1,0 +1,81 @@
+name: mvc-app-observability
+
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.5.4
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      xpack.security.http.ssl.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports:
+      - "127.0.0.1:9200:9200"
+    networks:
+      - telemetry
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:9.5.4
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+    ports:
+      - "127.0.0.1:5601:5601"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - telemetry
+    mem_limit: 2g
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.161.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./observability/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+      - ./observability/otel-output:/otel-output
+    ports:
+      - "127.0.0.1:4318:4318"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - telemetry
+    mem_limit: 256m
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:9.5.4
+    environment:
+      LS_JAVA_OPTS: "-Xms512m -Xmx512m"
+      XPACK_MONITORING_ENABLED: "false"
+      # One input event here is a whole OTLP export batch (~870KB, 512 log records), not a
+      # single log line, so the stock 8 workers x 125 events would hold ~1000 of them in
+      # flight. Keep the in-flight set small and size the heap for it.
+      PIPELINE_WORKERS: "2"
+      PIPELINE_BATCH_SIZE: "8"
+    volumes:
+      - ./observability/logstash/pipeline:/usr/share/logstash/pipeline:ro
+      - ./observability/otel-output:/otel-output:ro
+      # Persists the file input's sincedb (read offsets, see otel-logs.conf). Without it a
+      # container recreate resets every offset and the whole otel-output backlog is replayed
+      # into Elasticsearch as duplicate documents.
+      - logstash-data:/usr/share/logstash/data
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - telemetry
+    mem_limit: 1g
+
+networks:
+  telemetry:
+    driver: bridge
+
+volumes:
+  logstash-data:

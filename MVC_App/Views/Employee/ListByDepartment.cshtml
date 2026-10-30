@@ -1,0 +1,58 @@
+@model IEnumerable<MVC_App.Models.Employee>
+
+@{
+    ViewData["Title"] = "Employees By Department";
+    var selectedDept = ViewBag.SelectedDeptName as string;
+}
+
+<h1>Employees By Department</h1>
+
+<form asp-action="ListByDepartment" method="get" class="row g-2 mb-3">
+    <div class="col-auto">
+        <select name="deptName" asp-items="ViewBag.Departments" class="form-select">
+            <option value="">-- All Departments --</option>
+        </select>
+    </div>
+    <div class="col-auto">
+        <button type="submit" class="btn btn-primary">Filter</button>
+    </div>
+</form>
+
+@if (!string.IsNullOrEmpty(selectedDept))
+{
+    <p>Showing employees in department: <strong>@selectedDept</strong></p>
+}
+
+<table class="table">
+    <thead>
+        <tr>
+            <th>@Html.DisplayNameFor(model => model.EmpNo)</th>
+            <th>@Html.DisplayNameFor(model => model.EmpName)</th>
+            <th>@Html.DisplayNameFor(model => model.Salary)</th>
+            <th>@Html.DisplayNameFor(model => model.DeptName)</th>
+            <th>@Html.DisplayNameFor(model => model.Designation)</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+@foreach (var item in Model)
+{
+        <tr>
+            <td>@Html.DisplayFor(modelItem => item.EmpNo)</td>
+            <td>@Html.DisplayFor(modelItem => item.EmpName)</td>
+            <td>@Html.DisplayFor(modelItem => item.Salary)</td>
+            <td>@Html.DisplayFor(modelItem => item.DeptName)</td>
+            <td>@Html.DisplayFor(modelItem => item.Designation)</td>
+            <td>
+                <a asp-action="Edit" asp-route-id="@item.EmpNo">Edit</a> |
+                <a asp-action="Details" asp-route-id="@item.EmpNo">Details</a> |
+                <a asp-action="Delete" asp-route-id="@item.EmpNo">Delete</a>
+            </td>
+        </tr>
+}
+    </tbody>
+</table>
+
+<div>
+    <a asp-action="Index">Back to Full List</a>
+</div>

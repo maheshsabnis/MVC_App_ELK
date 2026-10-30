@@ -1,0 +1,219 @@
+@page "/departments"
+@using MVC_App.BlazorClient.Api
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@using MVC_App.BlazorClient.Components.Shared
+@inject MvcAppApiClient Api
+@inject ILogger<Departments> Logger
+
+<PageTitle>Departments</PageTitle>
+
+<h1>Departments</h1>
+<p class="lede">
+    Every button on this page calls <code>/api/departments</code> on MVC_App. Each call is logged
+    into <code>mvcapp-logs-*</code> by <code>ApiLoggingHandler</code>, and the API logs its own
+    side of the same call under the same <code>trace_id</code>.
+</p>
+
+<ApiErrorAlert Exception="_error" OnDismiss="() => _error = null" />
+
+<div class="toolbar">
+    <button class="btn btn-primary" @onclick="StartCreate" disabled="@_busy">New department</button>
+    <button class="btn" @onclick="() => LoadAsync()" disabled="@_busy">Reload</button>
+
+    @* Drives the API's own ?simulate= switch, so each error condition can be produced on demand
+       and watched arriving in Kibana. Values come from ApiControllerBase.ApplySimulatedFault. *@
+    <span class="spacer"></span>
+    <label class="simulate">
+        Simulate fault
+        <select @bind="_simulate" @bind:after="() => LoadAsync()" disabled="@_busy">
+            <option value="">none</option>
+            <option value="400">400 validation</option>
+            <option value="401">401 unauthorized</option>
+            <option value="403">403 forbidden</option>
+            <option value="404">404 not found</option>
+            <option value="409">409 conflict</option>
+            <option value="500">500 server error</option>
+            <option value="503">503 unavailable</option>
+        </select>
+    </label>
+</div>
+
+@if (_editing is not null)
+{
+    <div class="card">
+        <h2>@(_isNew ? "New department" : $"Edit department {_editing.DeptNo}")</h2>
+        <EditForm Model="_editing" OnValidSubmit="SaveAsync" FormName="department">
+            <DataAnnotationsValidator />
+            <div class="field">
+                <label>DeptNo</label>
+                @* The primary key is the route on update, so it is fixed once the row exists. *@
+                <InputNumber @bind-Value="_editing.DeptNo" disabled="@(!_isNew)" />
+                <ValidationMessage For="() => _editing.DeptNo" />
+            </div>
+            <div class="field">
+                <label>DeptName</label>
+                <InputText @bind-Value="_editing.DeptName" />
+                <ValidationMessage For="() => _editing.DeptName" />
+            </div>
+            <div class="field">
+                <label>Location</label>
+                <InputText @bind-Value="_editing.Location" />
+                <ValidationMessage For="() => _editing.Location" />
+            </div>
+            <div class="actions">
+                <button type="submit" class="btn btn-primary" disabled="@_busy">Save</button>
+                <button type="button" class="btn" @onclick="CancelEdit" disabled="@_busy">Cancel</button>
+            </div>
+        </EditForm>
+    </div>
+}
+
+@if (_departments is null)
+{
+    <p class="muted">Loading…</p>
+}
+else if (_departments.Count == 0)
+{
+    <p class="muted">No departments.</p>
+}
+else
+{
+    <table class="grid">
+        <thead>
+            <tr>
+                <th>DeptNo</th>
+                <th>DeptName</th>
+                <th>Location</th>
+                <th class="right">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var department in _departments)
+            {
+                <tr @key="department.DeptNo">
+                    <td>@department.DeptNo</td>
+                    <td>@department.DeptName</td>
+                    <td>@department.Location</td>
+                    <td class="right">
+                        <button class="btn btn-sm" @onclick="() => StartEdit(department)" disabled="@_busy">Edit</button>
+                        <button class="btn btn-sm btn-danger" @onclick="() => DeleteAsync(department.DeptNo)" disabled="@_busy">Delete</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+    <p class="muted">@_departments.Count department(s).</p>
+}
+
+@code {
+    private IReadOnlyList<DepartmentDto>? _departments;
+    private DepartmentDto? _editing;
+    private ApiException? _error;
+    private bool _isNew;
+    private bool _busy;
+    private string _simulate = string.Empty;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        // Caught rather than thrown so the page stays usable and the user can clear the simulated
+        // fault. The failure is still logged: ApiLoggingHandler records the HTTP call, and the
+        // explicit LogWarning below records it as an application-level event with its category.
+        await RunAsync(async () =>
+        {
+            _departments = await Api.GetDepartmentsAsync(string.IsNullOrEmpty(_simulate) ? null : _simulate);
+        });
+    }
+
+    private void StartCreate()
+    {
+        _isNew = true;
+        _editing = new DepartmentDto();
+        _error = null;
+    }
+
+    private void StartEdit(DepartmentDto department)
+    {
+        _isNew = false;
+        // Edit a copy, so cancelling does not leave the grid showing half-typed values.
+        _editing = department.Clone();
+        _error = null;
+    }
+
+    private void CancelEdit()
+    {
+        _editing = null;
+        _error = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_editing is null)
+        {
+            return;
+        }
+
+        var department = _editing;
+        var created = _isNew;
+
+        await RunAsync(async () =>
+        {
+            if (created)
+            {
+                await Api.CreateDepartmentAsync(department);
+            }
+            else
+            {
+                await Api.UpdateDepartmentAsync(department);
+            }
+
+            _editing = null;
+            await LoadAsync();
+        });
+    }
+
+    private async Task DeleteAsync(int deptNo)
+    {
+        await RunAsync(async () =>
+        {
+            await Api.DeleteDepartmentAsync(deptNo);
+
+            if (_editing?.DeptNo == deptNo)
+            {
+                _editing = null;
+            }
+
+            await LoadAsync();
+        });
+    }
+
+    /// <summary>
+    /// Runs an API operation, turning a failure into a visible alert and a log entry instead of a
+    /// torn-down circuit. Anything that is not an ApiException is left to propagate to the
+    /// ErrorBoundary in MainLayout, because an unexpected fault is not something this page can
+    /// meaningfully recover from.
+    /// </summary>
+    private async Task RunAsync(Func<Task> operation)
+    {
+        _busy = true;
+        _error = null;
+
+        try
+        {
+            await operation();
+        }
+        catch (ApiException apiException)
+        {
+            _error = apiException;
+
+            Logger.LogWarning(apiException,
+                "Departments page: {Method} failed with {StatusCode} [{ErrorCategory}] trace {TraceId}",
+                nameof(RunAsync), apiException.StatusCode, apiException.ErrorCategory, apiException.TraceId);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

@@ -1,0 +1,54 @@
+@model MVC_App.Models.PaginatedList<MVC_App.Models.Department>
+
+@{
+    ViewData["Title"] = "Departments";
+}
+
+<h1>Departments</h1>
+
+<p>
+    <a asp-action="Create" class="btn btn-primary">Create New</a>
+</p>
+<table class="table">
+    <thead>
+        <tr>
+            <th>@Html.DisplayNameFor(model => model[0].DeptNo)</th>
+            <th>@Html.DisplayNameFor(model => model[0].DeptName)</th>
+            <th>@Html.DisplayNameFor(model => model[0].Location)</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+@foreach (var item in Model)
+{
+        <tr>
+            <td>@Html.DisplayFor(modelItem => item.DeptNo)</td>
+            <td>@Html.DisplayFor(modelItem => item.DeptName)</td>
+            <td>@Html.DisplayFor(modelItem => item.Location)</td>
+            <td>
+                <a asp-action="Edit" asp-route-id="@item.DeptNo">Edit</a> |
+                <a asp-action="Details" asp-route-id="@item.DeptNo">Details</a> |
+                <a asp-action="Delete" asp-route-id="@item.DeptNo">Delete</a> |
+                <a asp-controller="Employee" asp-action="ListByDepartment" asp-route-deptName="@item.DeptName">Employees</a>
+            </td>
+        </tr>
+}
+    </tbody>
+</table>
+
+<nav aria-label="Department pagination">
+    <ul class="pagination">
+        <li class="page-item @(Model.HasPreviousPage ? "" : "disabled")">
+            <a class="page-link" asp-action="Index" asp-route-pageNumber="@(Model.PageIndex - 1)">Previous</a>
+        </li>
+        @for (int i = 1; i <= Model.TotalPages; i++)
+        {
+            <li class="page-item @(i == Model.PageIndex ? "active" : "")">
+                <a class="page-link" asp-action="Index" asp-route-pageNumber="@i">@i</a>
+            </li>
+        }
+        <li class="page-item @(Model.HasNextPage ? "" : "disabled")">
+            <a class="page-link" asp-action="Index" asp-route-pageNumber="@(Model.PageIndex + 1)">Next</a>
+        </li>
+    </ul>
+</nav>

@@ -1,0 +1,90 @@
+@inherits LayoutComponentBase
+
+<div class="page">
+    <nav class="sidebar">
+        <div class="brand">
+            <span class="brand-name">MVC_App</span>
+            <span class="brand-sub">Blazor client</span>
+        </div>
+        <NavLink class="nav-item" href="" Match="NavLinkMatch.All">Home</NavLink>
+        <NavLink class="nav-item" href="departments">Departments</NavLink>
+        <NavLink class="nav-item" href="employees">Employees</NavLink>
+        <NavLink class="nav-item" href="diagnostics">Diagnostics</NavLink>
+
+        @*
+            AuthorizeView reads the cascading AuthenticationState, so this re-renders by itself
+            when the user signs in or out. No manual state handling needed.
+        *@
+        <div class="nav-account">
+            <AuthorizeView>
+                <Authorized>
+                    <span class="nav-user" title="@context.User.Identity?.Name">
+                        @context.User.Identity?.Name
+                    </span>
+                    <a class="nav-item" href="account/logout">Sign out</a>
+                </Authorized>
+                <NotAuthorized>
+                    <a class="nav-item" href="account/login">Sign in</a>
+                </NotAuthorized>
+            </AuthorizeView>
+        </div>
+    </nav>
+
+    <main>
+        @*
+            Catches anything a component throws while rendering, including from OnInitializedAsync
+            and from a button handler. LoggingErrorBoundaryLogger writes it into mvcapp-logs-* with
+            the ELK field set before this markup is shown. Without the boundary an exception tears
+            down the SignalR circuit and the user just sees the reconnect modal.
+        *@
+        <ErrorBoundary @ref="_errorBoundary" @key="@_boundaryKey">
+            <ChildContent>
+                @Body
+            </ChildContent>
+            <ErrorContent Context="exception">
+                <div class="alert alert-error">
+                    <h2>Something went wrong</h2>
+                    <p>@DescribeFor(exception)</p>
+                    @if (TraceIdFor(exception) is { Length: > 0 } traceId)
+                    {
+                        <p class="trace">
+                            Trace id <code>@traceId</code> &mdash; paste this into Kibana as
+                            <code>trace_id : "@traceId"</code> to see the server-side record.
+                        </p>
+                    }
+                    <button class="btn" @onclick="Recover">Try again</button>
+                </div>
+            </ErrorContent>
+        </ErrorBoundary>
+    </main>
+</div>
+
+<div id="blazor-error-ui" data-nosnippet>
+    An unhandled error has occurred.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">🗙</span>
+</div>
+
+@code {
+    private ErrorBoundary? _errorBoundary;
+
+    // Changing the key forces a fresh boundary, which is what actually clears a latched error.
+    // Recover() alone resets the boundary but leaves the failed component tree in place.
+    private int _boundaryKey;
+
+    private static string DescribeFor(Exception exception) => exception switch
+    {
+        MVC_App.BlazorClient.Api.ApiException apiException =>
+            $"{apiException.DisplayMessage} (HTTP {apiException.StatusCode}, {apiException.ErrorCategory})",
+        _ => exception.Message
+    };
+
+    private static string? TraceIdFor(Exception exception) =>
+        exception is MVC_App.BlazorClient.Api.ApiException apiException ? apiException.TraceId : null;
+
+    private void Recover()
+    {
+        _boundaryKey++;
+        _errorBoundary?.Recover();
+    }
+}

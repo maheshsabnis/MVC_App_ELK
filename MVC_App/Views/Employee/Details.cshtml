@@ -1,0 +1,27 @@
+@model MVC_App.Models.Employee
+
+@{
+    ViewData["Title"] = "Employee Details";
+}
+
+<h1>Employee Details</h1>
+
+<div>
+    <hr />
+    <dl class="row">
+        <dt class="col-sm-2">@Html.DisplayNameFor(model => model.EmpNo)</dt>
+        <dd class="col-sm-10">@Html.DisplayFor(model => model.EmpNo)</dd>
+        <dt class="col-sm-2">@Html.DisplayNameFor(model => model.EmpName)</dt>
+        <dd class="col-sm-10">@Html.DisplayFor(model => model.EmpName)</dd>
+        <dt class="col-sm-2">@Html.DisplayNameFor(model => model.Salary)</dt>
+        <dd class="col-sm-10">@Html.DisplayFor(model => model.Salary)</dd>
+        <dt class="col-sm-2">@Html.DisplayNameFor(model => model.DeptName)</dt>
+        <dd class="col-sm-10">@Html.DisplayFor(model => model.DeptName)</dd>
+        <dt class="col-sm-2">@Html.DisplayNameFor(model => model.Designation)</dt>
+        <dd class="col-sm-10">@Html.DisplayFor(model => model.Designation)</dd>
+    </dl>
+</div>
+<div>
+    <a asp-action="Edit" asp-route-id="@Model?.EmpNo">Edit</a> |
+    <a asp-action="Index">Back to List</a>
+</div>

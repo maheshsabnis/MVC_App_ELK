@@ -1,0 +1,23 @@
+@model MVC_App.Models.Department
+
+@{
+    ViewData["Title"] = "Department Details";
+}
+
+<h1>Department Details</h1>
+
+<div>
+    <hr />
+    <dl class="row">
+        <dt class="col-sm-2">@Html.DisplayNameFor(model => model.DeptNo)</dt>
+        <dd class="col-sm-10">@Html.DisplayFor(model => model.DeptNo)</dd>
+        <dt class="col-sm-2">@Html.DisplayNameFor(model => model.DeptName)</dt>
+        <dd class="col-sm-10">@Html.DisplayFor(model => model.DeptName)</dd>
+        <dt class="col-sm-2">@Html.DisplayNameFor(model => model.Location)</dt>
+        <dd class="col-sm-10">@Html.DisplayFor(model => model.Location)</dd>
+    </dl>
+</div>
+<div>
+    <a asp-action="Edit" asp-route-id="@Model?.DeptNo">Edit</a> |
+    <a asp-action="Index">Back to List</a>
+</div>

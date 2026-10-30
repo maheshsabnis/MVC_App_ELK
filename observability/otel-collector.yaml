@@ -1,0 +1,62 @@
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 192
+    spike_limit_mib: 48
+  batch:
+    timeout: 5s
+    send_batch_size: 512
+
+exporters:
+  elasticsearch:
+    endpoints: ["http://elasticsearch:9200"]
+    require_data_stream: true
+    # No logs_index/traces_index/metrics_index override: OTel mapping mode writes through
+    # Elasticsearch data streams (require_data_stream=true) and only auto-creates data
+    # streams matching Elasticsearch's built-in otel-data index templates, e.g.
+    # logs-generic.otel-default, metrics-generic.otel-default, traces-generic.otel-default.
+    # A custom static index name here does not match those templates and fails with
+    # index_not_found_exception, so the exporter's own default naming is used instead.
+    #logs_index: "mvcapp-logs"
+    mapping:
+      allowed_modes: [otel, ecs]
+    sending_queue:
+      enabled: true
+      queue_size: 256
+    retry:
+      enabled: true
+      max_retries: 5
+      initial_interval: 1s
+      max_interval: 10s
+  # Logs are handed to Logstash instead of going straight to Elasticsearch, so a real
+  # Logstash pipeline sits in the path (parsing, enrichment) before indexing.
+  # Written as newline-delimited OTLP JSON (one ExportLogsServiceRequest per line);
+  # Logstash tails this file from the shared otel-logs volume.
+  file/logs:
+    path: /otel-output/logs.jsonl
+    format: json
+    rotation:
+      max_megabytes: 10
+      max_days: 3
+      max_backups: 3
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [elasticsearch]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [elasticsearch]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [file/logs]

@@ -1,0 +1,109 @@
+@page "/diagnostics"
+@using MVC_App.BlazorClient.Api
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@inject MvcAppApiClient Api
+@inject ILogger<Diagnostics> Logger
+
+<PageTitle>Diagnostics</PageTitle>
+
+<h1>Diagnostics</h1>
+<p class="lede">
+    Produces client-side failures on demand, to prove each logging path reaches
+    <code>mvcapp-logs-*</code>. The grids' <strong>Simulate fault</strong> dropdowns cover the
+    server-side conditions; these cover the ones that happen in this app.
+</p>
+
+<div class="card">
+    <h2>Uncaught component exception</h2>
+    <p>
+        Throws straight out of a button handler. Nothing catches it, so it reaches the
+        <code>ErrorBoundary</code> in the layout and is logged by
+        <code>LoggingErrorBoundaryLogger</code> as a 500.
+    </p>
+    <p class="muted">Find it with <code>log_attributes.error.boundary : true</code></p>
+    <button class="btn btn-danger" @onclick="ThrowUncaught">Throw an uncaught exception</button>
+</div>
+
+<div class="card">
+    <h2>Unreachable API</h2>
+    <p>
+        Calls a port nothing is listening on. No response ever arrives, so
+        <code>ApiLoggingHandler</code> logs it as a 503 with the socket exception attached, which
+        is the same <code>service_unavailable</code> category the MVC app uses for a dead
+        dependency.
+    </p>
+    <p class="muted">Find it with <code>log_attributes.error.category : "service_unavailable"</code></p>
+    <button class="btn btn-danger" @onclick="CallUnreachableAsync" disabled="@_busy">Call a dead endpoint</button>
+</div>
+
+<div class="card">
+    <h2>Handled API failure</h2>
+    <p>
+        Requests a department that does not exist. The API answers 404 with a problem document, the
+        client turns it into an <code>ApiException</code>, and the page shows it below rather than
+        letting it reach the boundary.
+    </p>
+    <p class="muted">Find it with <code>log_attributes.error.category : "not_found"</code></p>
+    <button class="btn" @onclick="CallMissingAsync" disabled="@_busy">Request a missing department</button>
+</div>
+
+@if (_result is { Length: > 0 })
+{
+    <div class="alert">@_result</div>
+}
+
+@code {
+    private string? _result;
+    private bool _busy;
+
+    private void ThrowUncaught()
+        => throw new InvalidOperationException(
+            "Deliberate client-side failure raised from the Diagnostics page.");
+
+    private async Task CallUnreachableAsync()
+    {
+        _busy = true;
+        _result = null;
+
+        try
+        {
+            using var http = new HttpClient { BaseAddress = new Uri("http://localhost:1") };
+            await http.GetAsync("api/departments");
+        }
+        catch (Exception exception)
+        {
+            // Logged here as well as by the handler, because this HttpClient is a local throwaway
+            // and so does not run through ApiLoggingHandler.
+            Logger.LogError(exception,
+                "Diagnostics: call to an unreachable endpoint failed [{ErrorCategory}]: {Message}",
+                MVC_App.BlazorClient.Diagnostics.ErrorConditions.Unavailable, exception.Message);
+
+            _result = $"Failed as expected: {exception.GetType().Name} - {exception.Message}";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task CallMissingAsync()
+    {
+        _busy = true;
+        _result = null;
+
+        try
+        {
+            await Api.GetDepartmentAsync(987654);
+            _result = "Unexpected: department 987654 exists.";
+        }
+        catch (ApiException apiException)
+        {
+            _result = $"Handled {apiException.StatusCode} [{apiException.ErrorCategory}]: " +
+                      $"{apiException.DisplayMessage} (trace {apiException.TraceId})";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

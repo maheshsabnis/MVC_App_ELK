@@ -1,0 +1,41 @@
+@using Microsoft.AspNetCore.Components.Endpoints
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+    <ResourcePreloader />
+    <link rel="stylesheet" href="@Assets["app.css"]" />
+    <link rel="stylesheet" href="@Assets["MVC_App.BlazorClient.styles.css"]" />
+    <ImportMap />
+    <HeadOutlet @rendermode="RenderModeForPage" />
+</head>
+
+<body>
+    <Routes @rendermode="RenderModeForPage" />
+    <ReconnectModal />
+    <script src="@Assets["_framework/blazor.web.js"]"></script>
+</body>
+
+</html>
+
+@code {
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    /// <summary>
+    /// Interactive for every page except the ones marked <c>[ExcludeFromInteractiveRouting]</c>,
+    /// which render as static SSR instead.
+    ///
+    /// Signing in has to write an authentication cookie, and a cookie is a response header. An
+    /// interactive component renders over the SignalR circuit, long after the response headers
+    /// were sent, so SignInManager cannot set the cookie from one. The sign-in pages therefore
+    /// opt out of interactivity and post a real form, which is the only point in the request where
+    /// the response is still writable.
+    /// </summary>
+    private IComponentRenderMode? RenderModeForPage =>
+        HttpContext.AcceptsInteractiveRouting() ? RenderMode.InteractiveServer : null;
+}

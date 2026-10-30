@@ -1,0 +1,281 @@
+@page "/employees"
+@using MVC_App.BlazorClient.Api
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@using MVC_App.BlazorClient.Components.Shared
+@inject MvcAppApiClient Api
+@inject ILogger<Employees> Logger
+
+<PageTitle>Employees</PageTitle>
+
+<h1>Employees</h1>
+<p class="lede">
+    CRUD against <code>/api/employees</code>. An employee must belong to a department that already
+    exists: the API answers a write with an unknown <code>DeptName</code> with a 404
+    (<code>DeptNameNotFoundException</code>), so both the filter and the form offer only real
+    department names. Use <strong>Simulate fault</strong> to produce error conditions on demand.
+</p>
+
+<ApiErrorAlert Exception="_error" OnDismiss="() => _error = null" />
+
+<div class="toolbar">
+    <button class="btn btn-primary" @onclick="StartCreate" disabled="@_busy">New employee</button>
+    <button class="btn" @onclick="ReloadAllAsync" disabled="@_busy">Reload</button>
+
+    <label class="filter">
+        Department
+        @* Filtering by a name that does not exist is also a 404 from the API, not an empty list. *@
+        <select @bind="_deptFilter" @bind:after="() => LoadAsync()" disabled="@_busy">
+            <option value="">all departments</option>
+            @foreach (var department in _departmentNames)
+            {
+                <option value="@department">@department</option>
+            }
+        </select>
+    </label>
+
+    <span class="spacer"></span>
+    <label class="simulate">
+        Simulate fault
+        <select @bind="_simulate" @bind:after="() => LoadAsync()" disabled="@_busy">
+            <option value="">none</option>
+            <option value="400">400 validation</option>
+            <option value="401">401 unauthorized</option>
+            <option value="403">403 forbidden</option>
+            <option value="404">404 not found</option>
+            <option value="409">409 conflict</option>
+            <option value="500">500 server error</option>
+            <option value="503">503 unavailable</option>
+        </select>
+    </label>
+</div>
+
+@if (_editing is not null)
+{
+    <div class="card">
+        <h2>@(_isNew ? "New employee" : $"Edit employee {_editing.EmpNo}")</h2>
+        <EditForm Model="_editing" OnValidSubmit="SaveAsync" FormName="employee">
+            <DataAnnotationsValidator />
+            <div class="field">
+                <label>EmpNo</label>
+                <InputNumber @bind-Value="_editing.EmpNo" disabled="@(!_isNew)" />
+                <ValidationMessage For="() => _editing.EmpNo" />
+            </div>
+            <div class="field">
+                <label>EmpName</label>
+                <InputText @bind-Value="_editing.EmpName" />
+                <ValidationMessage For="() => _editing.EmpName" />
+            </div>
+            <div class="field">
+                <label>Salary</label>
+                <InputNumber @bind-Value="_editing.Salary" />
+                <ValidationMessage For="() => _editing.Salary" />
+            </div>
+            <div class="field">
+                <label>DeptName</label>
+                @*
+                    A select, not a text box. The API rejects an employee whose DeptName is not an
+                    existing department row with a 404 DeptNameNotFoundException
+                    (EmployeesApiController.cs:99 on create, :139 on update), so a free-text field
+                    turns every typo into a failed save. Offering only real names removes the
+                    whole class of error.
+                *@
+                <InputSelect @bind-Value="_editing.DeptName">
+                    <option value="">-- select a department --</option>
+                    @foreach (var department in _departmentNames)
+                    {
+                        <option value="@department">@department</option>
+                    }
+                </InputSelect>
+                <ValidationMessage For="() => _editing.DeptName" />
+                @if (_departmentNames.Count == 0)
+                {
+                    <p class="muted">No departments loaded, so an employee cannot be saved yet. Create a department first.</p>
+                }
+            </div>
+            <div class="field">
+                <label>Designation</label>
+                <InputText @bind-Value="_editing.Designation" />
+                <ValidationMessage For="() => _editing.Designation" />
+            </div>
+            <div class="actions">
+                <button type="submit" class="btn btn-primary" disabled="@_busy">Save</button>
+                <button type="button" class="btn" @onclick="CancelEdit" disabled="@_busy">Cancel</button>
+            </div>
+        </EditForm>
+    </div>
+}
+
+@if (_employees is null)
+{
+    <p class="muted">Loading…</p>
+}
+else if (_employees.Count == 0)
+{
+    <p class="muted">No employees.</p>
+}
+else
+{
+    <table class="grid">
+        <thead>
+            <tr>
+                <th>EmpNo</th>
+                <th>EmpName</th>
+                <th>Designation</th>
+                <th>DeptName</th>
+                <th class="right">Salary</th>
+                <th class="right">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var employee in _employees)
+            {
+                <tr @key="employee.EmpNo">
+                    <td>@employee.EmpNo</td>
+                    <td>@employee.EmpName</td>
+                    <td>@employee.Designation</td>
+                    <td>@employee.DeptName</td>
+                    <td class="right">@employee.Salary.ToString("N0")</td>
+                    <td class="right">
+                        <button class="btn btn-sm" @onclick="() => StartEdit(employee)" disabled="@_busy">Edit</button>
+                        <button class="btn btn-sm btn-danger" @onclick="() => DeleteAsync(employee.EmpNo)" disabled="@_busy">Delete</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+    <p class="muted">@_employees.Count employee(s).</p>
+}
+
+@code {
+    private IReadOnlyList<EmployeeDto>? _employees;
+    private IReadOnlyList<string> _departmentNames = [];
+    private EmployeeDto? _editing;
+    private ApiException? _error;
+    private bool _isNew;
+    private bool _busy;
+    private string _deptFilter = string.Empty;
+    private string _simulate = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDepartmentNamesAsync();
+        await LoadAsync();
+    }
+
+    /// <summary>
+    /// The set of DeptName values the API will accept on a write. Loaded once on init and after a
+    /// save, rather than per keystroke, because it changes only when a department is added.
+    /// </summary>
+    private async Task LoadDepartmentNamesAsync()
+    {
+        await RunAsync(async () =>
+        {
+            var departments = await Api.GetDepartmentsAsync();
+            _departmentNames = departments
+                .Select(department => department.DeptName)
+                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        });
+    }
+
+    /// <summary>Refreshes the department list as well, so one added elsewhere becomes selectable.</summary>
+    private async Task ReloadAllAsync()
+    {
+        await LoadDepartmentNamesAsync();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await RunAsync(async () =>
+        {
+            _employees = await Api.GetEmployeesAsync(
+                string.IsNullOrWhiteSpace(_deptFilter) ? null : _deptFilter,
+                string.IsNullOrEmpty(_simulate) ? null : _simulate);
+        });
+    }
+
+    private void StartCreate()
+    {
+        _isNew = true;
+        _editing = new EmployeeDto();
+        _error = null;
+    }
+
+    private void StartEdit(EmployeeDto employee)
+    {
+        _isNew = false;
+        _editing = employee.Clone();
+        _error = null;
+    }
+
+    private void CancelEdit()
+    {
+        _editing = null;
+        _error = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_editing is null)
+        {
+            return;
+        }
+
+        var employee = _editing;
+        var created = _isNew;
+
+        await RunAsync(async () =>
+        {
+            if (created)
+            {
+                await Api.CreateEmployeeAsync(employee);
+            }
+            else
+            {
+                await Api.UpdateEmployeeAsync(employee);
+            }
+
+            _editing = null;
+            await LoadAsync();
+        });
+    }
+
+    private async Task DeleteAsync(int empNo)
+    {
+        await RunAsync(async () =>
+        {
+            await Api.DeleteEmployeeAsync(empNo);
+
+            if (_editing?.EmpNo == empNo)
+            {
+                _editing = null;
+            }
+
+            await LoadAsync();
+        });
+    }
+
+    private async Task RunAsync(Func<Task> operation)
+    {
+        _busy = true;
+        _error = null;
+
+        try
+        {
+            await operation();
+        }
+        catch (ApiException apiException)
+        {
+            _error = apiException;
+
+            Logger.LogWarning(apiException,
+                "Employees page: call failed with {StatusCode} [{ErrorCategory}] trace {TraceId}",
+                apiException.StatusCode, apiException.ErrorCategory, apiException.TraceId);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

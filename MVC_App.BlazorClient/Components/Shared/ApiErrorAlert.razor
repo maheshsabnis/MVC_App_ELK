@@ -1,0 +1,42 @@
+@*
+    Renders a failed API call in the shape the user needs: the server's own explanation, the
+    condition slug it was filed under, and the trace id that finds the server-side log entry.
+
+    This is for errors a page chose to catch and show in place (a 409 on save, a 404 on load).
+    Anything a page does not catch reaches the ErrorBoundary in MainLayout instead. Both end up in
+    mvcapp-logs-*; the difference is only whether the page stays usable.
+*@
+
+@if (Exception is not null)
+{
+    <div class="alert alert-error">
+        <strong>@Title</strong>
+        <p>@Exception.DisplayMessage</p>
+        <p class="meta">
+            HTTP @Exception.StatusCode
+            &middot; <code>@Exception.ErrorCategory</code>
+            @if (Exception.ServerErrorType is { Length: > 0 } errorType)
+            {
+                <text> &middot; <code>@errorType</code></text>
+            }
+        </p>
+        @if (Exception.TraceId is { Length: > 0 } traceId)
+        {
+            <p class="trace">
+                Kibana: <code>trace_id : "@traceId"</code>
+            </p>
+        }
+        @if (OnDismiss.HasDelegate)
+        {
+            <button class="btn btn-sm" @onclick="OnDismiss">Dismiss</button>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public MVC_App.BlazorClient.Api.ApiException? Exception { get; set; }
+
+    [Parameter] public string Title { get; set; } = "The API rejected that request";
+
+    [Parameter] public EventCallback OnDismiss { get; set; }
+}

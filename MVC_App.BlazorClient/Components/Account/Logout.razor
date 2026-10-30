@@ -1,0 +1,49 @@
+@page "/account/logout"
+@using Microsoft.AspNetCore.Components.Endpoints
+@using Microsoft.AspNetCore.Identity
+@using MVC_App.BlazorClient.Identity
+
+@* Static SSR for the same reason as Login: clearing the cookie is a response header. *@
+@attribute [ExcludeFromInteractiveRouting]
+
+@inject SignInManager<ApplicationUser> SignInManager
+@inject AuthEventLogger AuthLog
+@inject NavigationManager Navigation
+
+<PageTitle>Sign out</PageTitle>
+
+<div class="login-wrap">
+    <div class="card login-card">
+        <h1>Sign out</h1>
+        <p>You are signing out of the Blazor client.</p>
+        <p class="muted">
+            This does not sign you out of the MVC app. The two share a user database but issue
+            their own cookies, so each session ends separately.
+        </p>
+
+        @*
+            A POST, not a link. A GET that changes state can be triggered by anything that fetches
+            the URL, including a prefetch or an image tag on another site, which would sign people
+            out unexpectedly. The antiforgery token is added automatically by the framework.
+        *@
+        <EditForm Model="this" method="post" OnValidSubmit="SignOutAsync" FormName="logout">
+            <button type="submit" class="btn btn-primary">Sign out</button>
+            <a class="btn" href="">Cancel</a>
+        </EditForm>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    private async Task SignOutAsync()
+    {
+        var userName = HttpContext.User.Identity?.Name ?? "(unknown)";
+
+        await SignInManager.SignOutAsync();
+        AuthLog.SignedOut(userName);
+
+        Navigation.NavigateTo("account/login", forceLoad: true);
+    }
+}

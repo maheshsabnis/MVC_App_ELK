@@ -1,0 +1,66 @@
+@page "/"
+
+<PageTitle>MVC_App Blazor client</PageTitle>
+
+<h1>MVC_App Blazor client</h1>
+
+<p class="lede">
+    A Blazor Server front end for the MVC_App JSON API. Every CRUD action here goes out over HTTP
+    to <code>/api/departments</code> or <code>/api/employees</code>, and both sides of each call
+    are logged into the same <code>mvcapp-logs-*</code> indices.
+</p>
+
+<div class="card">
+    <h2>What gets logged</h2>
+    <p>Three separate paths, because in Blazor Server a single middleware cannot see all of them.</p>
+    <table class="grid">
+        <thead>
+            <tr><th>What</th><th>Written by</th><th>Find it with</th></tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Outbound API calls</td>
+                <td><code>ApiLoggingHandler</code></td>
+                <td><code>log_attributes.http.request.direction : "outbound"</code></td>
+            </tr>
+            <tr>
+                <td>Inbound page requests</td>
+                <td><code>RequestLoggingMiddleware</code></td>
+                <td><code>log_attributes.url.path : *</code></td>
+            </tr>
+            <tr>
+                <td>Component exceptions</td>
+                <td><code>LoggingErrorBoundaryLogger</code></td>
+                <td><code>log_attributes.error.boundary : true</code></td>
+            </tr>
+        </tbody>
+    </table>
+    <p class="muted">
+        Everything from this app carries <code>log_attributes.app.component : "blazor-client"</code>
+        and <code>service_name : "MVC_App.BlazorClient"</code>, so it can be separated from the MVC
+        app's own entries in the shared index.
+    </p>
+</div>
+
+<div class="card">
+    <h2>Correlating a call across both apps</h2>
+    <p>
+        A failed call shows its trace id in the error alert. One id in Kibana returns the click,
+        the outbound request, the API's own request log, its SQL, and any exception it threw:
+    </p>
+    <pre><code>trace_id : "paste-the-id-here"</code></pre>
+    <p class="muted">
+        Allow 10 to 30 seconds. The Collector batches on a 5 second timeout before Logstash picks
+        the file up and Elasticsearch refreshes.
+    </p>
+</div>
+
+<div class="card">
+    <h2>Producing errors on purpose</h2>
+    <p>
+        Both grids have a <strong>Simulate fault</strong> dropdown wired to the API's own
+        <code>?simulate=</code> switch, which covers 400, 401, 403, 404, 409, 500 and 503. The
+        <a href="diagnostics">Diagnostics</a> page throws client-side failures instead, so you can
+        see the difference between an API error and an exception raised inside a component.
+    </p>
+</div>

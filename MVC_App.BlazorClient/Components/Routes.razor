@@ -1,0 +1,31 @@
+@using Microsoft.AspNetCore.Components.Authorization
+
+<Router AppAssembly="typeof(Program).Assembly" NotFoundPage="typeof(Pages.NotFound)">
+    <Found Context="routeData">
+        @*
+            AuthorizeRouteView rather than RouteView, so a page carrying [Authorize] is gated
+            instead of rendered. NotAuthorized covers both cases: an anonymous visitor is sent to
+            the login page with a returnUrl, and a signed-in user who still lacks permission is
+            told so rather than bounced into a redirect loop.
+        *@
+        <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)">
+            <NotAuthorized>
+                @if (context.User.Identity?.IsAuthenticated is true)
+                {
+                    <div class="alert alert-error">
+                        <h2>Access denied</h2>
+                        <p>Signed in as @context.User.Identity.Name, but this page is not available to you.</p>
+                    </div>
+                }
+                else
+                {
+                    <RedirectToLogin />
+                }
+            </NotAuthorized>
+            <Authorizing>
+                <p class="muted">Checking your sign-in…</p>
+            </Authorizing>
+        </AuthorizeRouteView>
+        <FocusOnNavigate RouteData="routeData" Selector="h1" />
+    </Found>
+</Router>
